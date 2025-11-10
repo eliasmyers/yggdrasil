@@ -1,0 +1,164 @@
+networks:
+  mediaserver:
+    name: mediaserver
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+      - subnet: ${DOCKER_SUBNET:?err}
+        gateway: ${DOCKER_GATEWAY:?err}
+
+services:
+
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - 8888:8888/tcp # HTTP proxy
+      - 8388:8388/tcp # Shadowsocks
+      - 8388:8388/udp # Shadowsocks
+
+      - ${WEBUI_PORT_QBITTORRENT:?err}:${WEBUI_PORT_QBITTORRENT:?err}   
+      - ${WEBUI_PORT_JELLYFIN:?err}:8096      
+      - ${WEBUI_PORT_JELLYSEERR:?err}:5055    
+      - ${WEBUI_PORT_PROWLARR:?err}:9696      
+      - ${WEBUI_PORT_RADARR:?err}:7878        
+      - ${WEBUI_PORT_SONARR:?err}:8989        
+      - ${FLARESOLVERR_PORT:?err}:8191        
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TIMEZONE}
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
+      - VPN_TYPE=${VPN_TYPE}
+      - OPENVPN_USER=${VPN_USERNAME}
+      - OPENVPN_PASSWORD=${VPN_PASSWORD}
+    volumes:
+      - ${CONFIG_FOLDER}/gluetun:/gluetun
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+    container_name: qbittorrent
+    restart: unless-stopped
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=${UMASK}
+      - TZ=${TIMEZONE}
+      - WEBUI_PORT=${WEBUI_PORT_QBITTORRENT:?err}
+    network_mode: "service:gluetun"
+    volumes:
+      - ${CONFIG_FOLDER}/qbittorrent:/config
+      - ${MEDIA_FOLDER}/downloads:/downloads
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TIMEZONE}
+    network_mode: "service:gluetun"
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=${UMASK}
+      - TZ=${TIMEZONE}
+    network_mode: "service:gluetun"
+    volumes:
+      - ${CONFIG_FOLDER}/prowlarr:/config
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=${UMASK}
+      - TZ=${TIMEZONE}
+    network_mode: "service:gluetun"
+    volumes:
+      - ${CONFIG_FOLDER}/radarr:/config
+      - ${MEDIA_FOLDER}/movies:/movies
+      - ${MEDIA_FOLDER}/downloads:/downloads
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=${UMASK}
+      - TZ=${TIMEZONE}
+    network_mode: "service:gluetun"
+    volumes:
+      - ${CONFIG_FOLDER}/sonarr:/config
+      - ${MEDIA_FOLDER}/tv:/tv
+      - ${MEDIA_FOLDER}/downloads:/downloads
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - UMASK=${UMASK}
+      - TZ=${TIMEZONE}
+    network_mode: "service:gluetun"
+    volumes:
+      - ${CONFIG_FOLDER}/jellyfin:/config
+      - ${MEDIA_FOLDER}/movies:/movies
+      - ${MEDIA_FOLDER}/tv:/tv
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    restart: unless-stopped
+    depends_on:
+      gluetun:
+        condition: service_healthy
+        restart: true
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TIMEZONE}
+    network_mode: "service:gluetun"
+    volumes:
+      - ${CONFIG_FOLDER}/jellyseerr:/app/config
